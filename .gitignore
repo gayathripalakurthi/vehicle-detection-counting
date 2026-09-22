@@ -27,6 +27,10 @@ outputs/results/*
 !outputs/results/.gitkeep
 outputs/plots/*
 !outputs/plots/.gitkeep
+# ...except curated failure-case evidence images, which are small documentation
+# assets referenced from README.md, not disposable run output
+!outputs/plots/failure_cases/
+!outputs/plots/failure_cases/*.jpg
 
 # Environment / IDE
 .env
