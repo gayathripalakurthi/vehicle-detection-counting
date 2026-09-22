@@ -83,6 +83,13 @@ class LineCounter:
 
         return events
 
+    def distance_to_line(self, xyxy: tuple[float, float, float, float]) -> float:
+        return self._signed_distance(self._anchor_point(xyxy))
+
+    def is_counted(self, track_id: int) -> bool:
+        state = self._states.get(track_id)
+        return state is not None and state.counted
+
     def total(self) -> int:
         return sum(sum(d.values()) for d in self.counts.values())
 
