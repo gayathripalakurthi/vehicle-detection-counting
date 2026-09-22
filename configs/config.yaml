@@ -2,8 +2,15 @@
 # Every tunable setting lives here so nothing is hardcoded in source files.
 
 model:
-  name: yolo26n              # yolo26n (nano) - fits 4GB VRAM comfortably; try yolo26s for higher accuracy
-  weights: models/weights/yolo26n.pt
+  name: yolo26n_visdrone_finetuned
+  # Default as of the baseline-vs-finetuned comparison (outputs/results/model_comparison.json):
+  # fine-tuning on VisDrone raised overall F1 from 0.275 to 0.652 (mostly recall: 0.16 -> 0.53),
+  # fixed the nadir-drone failure case entirely (0 detections -> 24 at avg conf 0.67), and improved
+  # the main elevated-camera scenario too (6 detections -> 97 on the same sampled frames), all at
+  # effectively the same FPS. To use the original COCO-pretrained baseline instead, switch weights
+  # to models/weights/yolo26n.pt and classes to the COCO id scheme (see git history for the exact
+  # block - configs/config.yaml before this change).
+  weights: models/weights/yolo26n_visdrone_finetuned.pt
   device: auto                # auto | cuda:0 | cpu
   img_size: 640
   confidence: 0.35
@@ -11,14 +18,15 @@ model:
   half_precision: true        # use FP16 on GPU to save VRAM and increase speed
 
 classes:
-  # COCO class ids for vehicle categories (pretrained YOLO26 is COCO-trained)
-  vehicle_class_ids: [1, 2, 3, 5, 7]   # bicycle, car, motorcycle, bus, truck
+  # Our own 5-class scheme (see training/prepare_visdrone.py) - NOT COCO ids, since this is the
+  # fine-tuned model's own class numbering, learned from the remapped VisDrone labels.
+  vehicle_class_ids: [0, 1, 2, 3, 4]
   names:
-    1: bicycle
-    2: car
-    3: motorcycle
-    5: bus
-    7: truck
+    0: bicycle
+    1: car
+    2: motorcycle
+    3: bus
+    4: truck
 
 tracking:
   tracker: bytetrack          # bytetrack | botsort
