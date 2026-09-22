@@ -57,4 +57,4 @@ training:
   patience: 15
   optimizer: auto
   lr0: 0.01
-  data_yaml: data/splits/dataset.yaml
+  data_yaml: training/dataset.yaml
