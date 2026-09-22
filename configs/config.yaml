@@ -38,7 +38,7 @@ counting:
   direction_labels: [IN, OUT]
 
 io:
-  video_path: data/raw/sample_traffic.mp4
+  video_path: data/raw/sample_traffic_elevated.mp4
   output_video_path: outputs/videos/processed.mp4
   output_results_path: outputs/results/counts.json
   save_video: true
