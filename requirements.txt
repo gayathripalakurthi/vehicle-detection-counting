@@ -1,0 +1,11 @@
+# PyTorch is installed separately with the CUDA-specific index (see README setup instructions):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+# Installing it via this file with the default index would pull the CPU-only build.
+
+ultralytics>=8.4.0
+opencv-python>=4.13.0
+numpy>=2.0.0
+pyyaml>=6.0
+pandas>=2.2.0
+matplotlib>=3.9.0
+pytest>=8.0.0
