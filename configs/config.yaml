@@ -35,6 +35,7 @@ counting:
     # normalized coordinates (0-1) so the line scales with any video resolution
     point1: [0.0, 0.82]
     point2: [1.0, 0.82]
+    margin_px: 15   # dead zone around the line to reject box jitter near the boundary
   direction_labels: [IN, OUT]
 
 io:
