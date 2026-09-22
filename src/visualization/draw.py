@@ -23,11 +23,17 @@ def draw_tracked_object(frame, track_obj) -> None:
     cv2.putText(frame, label, (x1 + 2, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
 
+def draw_counting_line(frame, p1: tuple[float, float], p2: tuple[float, float]) -> None:
+    pt1 = (int(p1[0]), int(p1[1]))
+    pt2 = (int(p2[0]), int(p2[1]))
+    cv2.line(frame, pt1, pt2, (0, 220, 255), 3)
+
+
 def draw_hud(frame, lines: list[str]) -> None:
     """Draws a semi-transparent stats panel in the top-left corner."""
     pad = 10
     line_h = 24
-    width = 260
+    width = 320
     height = pad * 2 + line_h * len(lines)
 
     overlay = frame.copy()
