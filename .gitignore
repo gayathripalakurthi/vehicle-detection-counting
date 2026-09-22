@@ -14,6 +14,9 @@ data/processed/*
 data/splits/*
 !data/splits/.gitkeep
 
+# Training runs (checkpoints, logs - large, reproducible from training/ scripts)
+training/runs/
+
 # Model weights (large binaries, use Git LFS or releases instead)
 models/weights/*.pt
 models/weights/*.onnx
