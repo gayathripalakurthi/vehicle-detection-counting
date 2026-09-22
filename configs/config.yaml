@@ -33,8 +33,8 @@ counting:
   line:
     enabled: true
     # normalized coordinates (0-1) so the line scales with any video resolution
-    point1: [0.0, 0.6]
-    point2: [1.0, 0.6]
+    point1: [0.0, 0.82]
+    point2: [1.0, 0.82]
   direction_labels: [IN, OUT]
 
 io:
