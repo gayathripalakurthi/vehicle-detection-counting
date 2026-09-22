@@ -41,6 +41,18 @@ def main():
         seed=config["runtime"]["seed"],
         project=str(resolve_path("training/runs")),
         name="visdrone_finetune",
+        # Explicit rather than relying on defaults, since we want the full
+        # training record kept: per-epoch metrics (results.csv), loss/mAP
+        # curves, confusion matrix, PR curves, and sample train/val batch
+        # images all get written to training/runs/visdrone_finetune/.
+        save=True,
+        plots=True,
+        verbose=True,
+        # save_period keeps a checkpoint every 5 epochs in addition to
+        # last.pt/best.pt, so a crash or a "which epoch was this?" question
+        # later doesn't lose intermediate states.
+        save_period=5,
+        exist_ok=False,  # never overwrite a previous run's saved data
     )
 
 
