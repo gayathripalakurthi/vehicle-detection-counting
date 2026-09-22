@@ -1,0 +1,59 @@
+# Vehicle Detection and Counting System - main configuration
+# Every tunable setting lives here so nothing is hardcoded in source files.
+
+model:
+  name: yolo26n              # yolo26n (nano) - fits 4GB VRAM comfortably; try yolo26s for higher accuracy
+  weights: models/weights/yolo26n.pt
+  device: auto                # auto | cuda:0 | cpu
+  img_size: 640
+  confidence: 0.35
+  iou: 0.5
+  half_precision: true        # use FP16 on GPU to save VRAM and increase speed
+
+classes:
+  # COCO class ids for vehicle categories (pretrained YOLO26 is COCO-trained)
+  vehicle_class_ids: [1, 2, 3, 5, 7]   # bicycle, car, motorcycle, bus, truck
+  names:
+    1: bicycle
+    2: car
+    3: motorcycle
+    5: bus
+    7: truck
+
+tracking:
+  tracker: bytetrack          # bytetrack | botsort
+  persist: true
+  track_high_thresh: 0.5
+  track_low_thresh: 0.1
+  new_track_thresh: 0.6
+  track_buffer: 30
+  match_thresh: 0.8
+
+counting:
+  line:
+    enabled: true
+    # normalized coordinates (0-1) so the line scales with any video resolution
+    point1: [0.0, 0.6]
+    point2: [1.0, 0.6]
+  direction_labels: [IN, OUT]
+
+io:
+  video_path: data/raw/sample_traffic.mp4
+  output_video_path: outputs/videos/processed.mp4
+  output_results_path: outputs/results/counts.json
+  save_video: true
+  show_display: true
+
+runtime:
+  batch_size: 1
+  num_workers: 4
+  seed: 42
+
+training:
+  epochs: 50
+  batch_size: 8
+  img_size: 640
+  patience: 15
+  optimizer: auto
+  lr0: 0.01
+  data_yaml: data/splits/dataset.yaml

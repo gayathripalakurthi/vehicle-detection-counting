@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Data (never commit large datasets)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/splits/*
+!data/splits/.gitkeep
+
+# Model weights (large binaries, use Git LFS or releases instead)
+models/weights/*.pt
+models/weights/*.onnx
+models/weights/*.engine
+!models/weights/.gitkeep
+
+# Outputs (generated artifacts, not source)
+outputs/videos/*
+!outputs/videos/.gitkeep
+outputs/results/*
+!outputs/results/.gitkeep
+outputs/plots/*
+!outputs/plots/.gitkeep
+
+# Environment / IDE
+.env
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
