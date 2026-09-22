@@ -2,7 +2,7 @@
 
 A vehicle detection, tracking, and line-crossing counting pipeline for traffic video. Detects vehicles frame-by-frame, assigns persistent track IDs across frames, and counts each vehicle exactly once as it crosses a configurable line — with per-class and directional (IN/OUT) breakdowns.
 
-**Status: Stage A (pretrained baseline) complete.** Detection, tracking, counting, and evaluation all work end-to-end on sample footage. Stage B (fine-tuning on a labeled dataset) has not started yet.
+**Status: Stage B (fine-tuned model) complete and adopted as default.** Detection, tracking, counting, evaluation, dataset preparation, fine-tuning, and a baseline-vs-fine-tuned comparison all work end-to-end. See [Fine-tuning results](#fine-tuning-results-stage-b) below for the evidence behind that decision.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ Verify the GPU is visible:
 .venv\Scripts\python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-Developed and tested against an RTX 2050 (4GB VRAM) — all default settings (`yolo26n`, 640px input) are sized for that class of GPU.
+Developed and tested against an RTX 2050 (4GB VRAM) — all default settings (`yolo26n`, 640px input) are sized for that class of GPU. Fine-tuning peaked at 2.64GB VRAM usage, well within budget.
 
 ## Usage
 
@@ -54,8 +54,11 @@ python scripts/run_tracking.py --source data/raw/your_video.mp4
 # Full pipeline: detect + track + line-crossing count, video + JSON results
 python scripts/run_counting.py --source data/raw/your_video.mp4
 
-# Runtime performance stats + recall sanity check (see Evaluation below)
+# Runtime performance stats + recall sanity check
 python scripts/evaluate.py --source data/raw/your_video.mp4
+
+# Baseline vs fine-tuned model comparison (needs training/train.py run first)
+python scripts/compare_models.py
 ```
 
 Outputs land in `outputs/videos/` (annotated video) and `outputs/results/` (JSON counts and evaluation reports) unless overridden with `--output`/`--results`.
@@ -66,76 +69,104 @@ Outputs land in `outputs/videos/` (annotated video) and `outputs/results/` (JSON
 python -m pytest tests/ -v
 ```
 
-17 tests, all mocking out Ultralytics' `YOLO` class so they run in well under a second with no GPU, weights, or video file needed — covering config loading, device resolution, detection-to-`Detection` conversion and class filtering, tracker ID persistence, and the line-counter's crossing/duplicate-prevention/hysteresis logic in detail (the counting logic is the part most worth protecting against regressions).
+26 tests, all mocking out Ultralytics' `YOLO` class (or needing no model at all) so they run in well under a second with no GPU, weights, or video file needed — covering config loading, device resolution, detection-to-`Detection` conversion and class filtering, tracker ID persistence, the line-counter's crossing/duplicate-prevention/hysteresis logic, and the IoU-matching detection evaluator used for the model comparison.
 
 ## Configuration
 
 Everything tunable lives in `configs/config.yaml` — no hardcoded settings in source:
 
-- `model`: which YOLO weights, confidence/IoU thresholds, input resolution, device
-- `classes`: which COCO class IDs count as "vehicle" (bicycle, car, motorcycle, bus, truck)
+- `model`: which YOLO weights, confidence/IoU thresholds, input resolution, device. Defaults to the fine-tuned model (see below); the config file has a comment explaining how to switch back to the pretrained baseline.
+- `classes`: which class IDs count as "vehicle", and their names. **Not COCO ids** — the fine-tuned model has its own 5-class numbering (see `training/prepare_visdrone.py`).
 - `tracking`: which tracker (`bytetrack`/`botsort`) and its thresholds
 - `counting.line`: the counting line's two endpoints as **normalized** (0–1) coordinates, so it scales with any video resolution, plus a `margin_px` dead zone (see Limitations)
+- `training`: dataset path, epochs, batch size, etc. for `training/train.py`
 - `io`: input/output paths
 
-## Evaluation
+## Fine-tuning results (Stage B)
 
-Full detection-quality metrics (mAP, precision/recall against ground-truth boxes) need a labeled validation set, which doesn't exist yet for this project — that's part of Stage B (dataset selection, Phase 12+). In the meantime, `scripts/evaluate.py` reports:
+**Dataset**: [VisDrone2019-DET](https://github.com/VisDrone/VisDrone-Dataset) (8,629 aerial/drone images, official train/val/test-dev split by sequence — no leakage risk), chosen specifically because it directly targets the one concrete, evidenced weakness found in Stage A: the COCO-pretrained model's confidence collapses on nadir/aerial camera angles. Downloaded and converted via Ultralytics' built-in downloader (`training/prepare_visdrone.py`), then its 10 classes remapped to our 5 (van merged into car; tricycle classes dropped as not a clean fit) — see that script's docstring for the exact mapping and the reasoning against re-running it on already-remapped labels.
 
-- **Runtime performance**: average/median/p10 FPS and per-frame latency
-- **Recall sanity check**: flags any track that got close to the counting line but was never confirmed crossing it — a cheap proxy for missed counts without hand-labeled ground truth. Not every flag is a real miss (a vehicle can legitimately turn off or still be near the line when the video ends), so treat it as a shortlist to spot-check, not an error count.
+**Training**: `yolo26n`, fine-tuned from the same COCO-pretrained checkpoint the baseline uses (transfer learning, not from scratch), 640px, batch 8, lr0=0.01. Ran 47/50 epochs before early stopping (patience=15, peak at epoch 32), **116 minutes** total, peak VRAM 2.64GB. Full logs, per-epoch metrics, loss/mAP curves, confusion matrix, and periodic checkpoints (every 5 epochs) are in `training/runs/visdrone_finetune/` (gitignored — rerun `training/train.py` to reproduce).
 
-Current baseline numbers on the sample clip (RTX 2050, `yolo26n`, 640px, bytetrack): **~47 FPS avg** (median 47.2, p10 41.2), ~27ms/frame latency, 438 frames processed.
+**Comparison** (`scripts/compare_models.py`, full results in `outputs/results/model_comparison.json`):
+
+On 548 VisDrone val images (precision/recall/F1 at conf≥0.35, IoU≥0.5, matched by class name so the baseline's COCO ids and the fine-tuned model's own ids compare fairly):
+
+| Metric | Baseline | Fine-tuned |
+|---|---:|---:|
+| Precision | 0.899 | 0.848 |
+| Recall | 0.162 | 0.530 |
+| F1 | 0.275 | 0.652 |
+| Avg FPS | 56.4 | 53.8 |
+| Official mAP50 | — | 0.382 |
+| Official mAP50-95 | — | 0.226 |
+
+Per-class F1: car 0.37→0.76, bus 0.21→0.47, truck 0.09→0.32, motorcycle 0.01→0.37, bicycle 0.002→0.10 (bicycle stays weak — only 13k of the ~300k boxes in VisDrone are bicycles, a real class-imbalance limitation, not a bug).
+
+The headline number is recall, not precision: the baseline wasn't wrong about what it detected, it just wasn't finding most vehicles in aerial-style imagery at all.
+
+**On our own clips** (not just the benchmark — this is what actually matters for the deployed system):
+- Nadir clip (the original failure case): **0 → 24 detections** across 5 sampled frames, avg confidence 0.67
+- Elevated clip (main working scenario): **6 → 97 detections** on the same sampled frames, avg confidence 0.43 → 0.59 (higher confidence too, not just more noise — meaning previously-missed real vehicles, not spurious boxes)
+
+Both scenarios improved with no meaningful precision cost, which is why the fine-tuned model is now the default rather than an optional extra.
+
+**Honest caveats, not oversold as a full fix:**
+- Spot-checking a specific nadir-clip frame (not just the 5-frame average) found a genuinely mixed result: some vehicles pass threshold now, most still don't at that exact frame. See `outputs/plots/failure_cases/camera_angle_nadir_view.jpg`.
+- A new failure mode appeared: the fine-tuned model misclassifies a **boat** as a "truck" in the nadir clip — a domain-shift side effect of training on more aerial imagery (boat and truck silhouettes look more similar from directly above).
+- The track-loss-near-line failure mode (a vehicle tracked steadily then lost right before the counting line) still happens with the fine-tuned model too — it's a generic near-threshold dropout issue, not something fine-tuning on a different dataset was going to fix.
 
 ## Sample data
 
 `data/raw/` is gitignored (see Model weights below for the equivalent weights situation). Two clips were used during development, both sourced from Pixabay (free-to-use, no attribution required):
 
 - `sample_traffic_elevated.mp4` — the working baseline clip: an elevated, oblique CCTV-style angle over a multi-lane boulevard.
-- `sample_traffic.mp4` — a straight-down (nadir) drone shot, kept specifically as a failure-case example (see below), not used as a baseline.
+- `sample_traffic.mp4` — a straight-down (nadir) drone shot, kept specifically as a failure-case example (see below).
 
 ## Failure cases
 
-Two concrete failure modes found and documented so far (see `outputs/plots/failure_cases/` for the generated evidence images — regenerate with `python scripts/generate_failure_examples.py`):
+See `outputs/plots/failure_cases/` for generated evidence images — regenerate with `python scripts/generate_failure_examples.py` (uses whichever model `configs/config.yaml` currently points at).
 
-1. **Camera angle (nadir/top-down view)**: `sample_traffic.mp4` is a straight-down drone shot. A COCO-pretrained detector is trained almost entirely on street/eye-level imagery, so on this clip vehicle confidence collapses to ~0.02–0.08 — the model finds the right shape but far below any usable threshold (0.35 default). This isn't a bug; it's a real limitation of using a COCO-pretrained model on an unfamiliar viewing angle, and is exactly the kind of gap Stage B fine-tuning on angle-diverse data would need to address.
+1. **Camera angle (nadir/top-down view)**: improved substantially by Stage B fine-tuning but not eliminated — see the Fine-tuning results section above for the full before/after picture, including the new boat-misclassified-as-truck finding.
 
-2. **Track loss near the counting line**: found via `evaluate.py`'s recall check, not by inspection. A vehicle (track 54) was tracked steadily for 80+ frames at borderline 0.35–0.57 confidence, closing in on the counting line — then the track dropped 13.5px short of it, producing a genuine missed count. This is a tracker/detector confidence limitation, not a counting-logic bug (verified by tracing the track's position frame-by-frame).
+2. **Track loss near the counting line**: a vehicle at borderline detection confidence gets tracked for a while, closing in on the counting line, then the track drops a few pixels short — a genuine missed count. Found originally via `evaluate.py`'s recall check (not by inspection), and confirmed to still occur (with a different vehicle) after fine-tuning. `generate_failure_examples.py` finds this dynamically each run via the same recall-check logic, rather than a hardcoded track id, since which track (if any) ends up being the closest near-miss depends on which model and run produced it.
 
-A third thing worth knowing, not a failure but a correctness note: the baseline clip's road has a median strip splitting it into two carriageways. One tracked vehicle was found moving in the opposite direction to the rest (confirmed via a 30-frame trajectory trace and visible taillight orientation) and was correctly counted as the opposite direction (`IN` vs `OUT`) — a working example of the bidirectional counting the line-crossing logic is designed for, not a bug.
+3. **Correctness note, not a failure**: the baseline clip's road has a median strip splitting it into two carriageways. A tracked vehicle moving opposite to the rest of the traffic (confirmed via a 30-frame trajectory trace and taillight orientation) was correctly counted in the opposite direction (`IN` vs `OUT`) — a working example of the bidirectional counting the line-crossing logic is designed for.
 
 ## Project structure
 
 ```
 vehicle-detection-counting/
 ├── configs/            # YAML configuration (model, tracking, counting line, training)
-├── data/                # raw/processed video, dataset splits (gitignored)
-├── models/weights/      # model weight files (gitignored, auto-downloaded on first run)
+├── data/                # raw/processed video, VisDrone dataset (gitignored)
+├── models/weights/      # model weight files (gitignored, see Model weights below)
 ├── src/
 │   ├── detection/       # YOLO detector wrapper, vehicle-class filtering
 │   ├── tracking/        # ByteTrack/BoT-SORT wrapper, persistent track IDs
 │   ├── counting/        # line-crossing counting logic
 │   ├── visualization/   # box/HUD/line drawing
-│   ├── evaluation/      # runtime performance + recall sanity checks
+│   ├── evaluation/      # runtime performance, recall sanity checks, IoU-matching detection metrics
 │   └── utils/           # config loading, path resolution
-├── scripts/             # CLI entry points (run_detection, run_tracking, run_counting, evaluate, generate_failure_examples)
-├── training/            # fine-tuning scripts (Stage B, not started)
-├── tests/                # unit tests (not started)
-├── outputs/              # processed videos, JSON results, plots (gitignored)
+├── scripts/             # CLI entry points (run_detection, run_tracking, run_counting, evaluate, compare_models, generate_failure_examples)
+├── training/            # dataset prep (prepare_visdrone.py) and fine-tuning (train.py, dataset.yaml, runs/)
+├── tests/                # unit tests, 26 passing
+├── outputs/              # processed videos, JSON results, plots (gitignored except curated failure-case images)
 └── notebooks/            # exploratory analysis (unused so far)
 ```
 
 ## Model weights
 
-Weight files are not committed to git (see `.gitignore`). Pretrained YOLO26 weights are downloaded automatically by Ultralytics on first run. Fine-tuned weights (Stage B) will be published as a GitHub Release rather than committed directly.
+Weight files are not committed to git (see `.gitignore`). Pretrained YOLO26 weights are downloaded automatically by Ultralytics on first run. The fine-tuned weights (`models/weights/yolo26n_visdrone_finetuned.pt`) are reproducible via `training/prepare_visdrone.py` then `training/train.py` (~2 hours on a 4GB GPU); publishing them as a GitHub Release for direct download is planned but not done yet.
 
 ## Limitations
 
-- No custom fine-tuning yet — running purely on COCO-pretrained weights, so anything far from COCO's training distribution (nadir angles, night/rain scenes, unusual vehicle types) is unvalidated at best (see Failure cases above for a concrete example).
-- No labeled validation set yet, so there are no mAP/precision/recall numbers — only runtime performance and a heuristic recall check.
-- Only tested against two short clips from one city's traffic camera style; generalization to other camera setups is unverified.
-- Counting accuracy has been spot-checked by hand (frame-by-frame trajectory tracing), not validated against an independently-annotated ground-truth count.
+- Bicycle detection is weak even after fine-tuning (F1 ≈ 0.10) due to severe class imbalance in VisDrone (13k bicycle boxes vs. ~220k car boxes) — a targeted fix would need either oversampling bicycles or a supplementary dataset.
+- The nadir/aerial camera-angle case is improved, not solved — see Fine-tuning results above.
+- A new misclassification (boat → truck) appeared after fine-tuning on aerial imagery — not investigated further yet.
+- Only tested against two short clips plus the VisDrone val benchmark; generalization to other camera setups, weather, and lighting is unverified.
+- Counting accuracy has been spot-checked by hand (frame-by-frame trajectory tracing) and via the recall-check heuristic, not validated against an independently-annotated ground-truth count of a full video.
+- No night/rain/dense-traffic/occlusion-specific testing yet.
 
 ## Future work
 
-Roughly in priority order (see project plan for the full list): dataset selection and fine-tuning (Stage B), broader failure-case coverage (occlusion, night/rain, dense traffic), multiple counting lines / region-based counting, vehicle speed and direction estimation, a Streamlit dashboard, real-time webcam input.
+Roughly in priority order: broader failure-case coverage (occlusion, night/rain, dense traffic), addressing the bicycle class-imbalance gap, multiple counting lines / region-based counting, vehicle speed and direction estimation, a web frontend for uploading and processing videos, real-time webcam input.
