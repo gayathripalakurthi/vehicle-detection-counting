@@ -60,6 +60,14 @@ python scripts/evaluate.py --source data/raw/your_video.mp4
 
 Outputs land in `outputs/videos/` (annotated video) and `outputs/results/` (JSON counts and evaluation reports) unless overridden with `--output`/`--results`.
 
+## Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+17 tests, all mocking out Ultralytics' `YOLO` class so they run in well under a second with no GPU, weights, or video file needed — covering config loading, device resolution, detection-to-`Detection` conversion and class filtering, tracker ID persistence, and the line-counter's crossing/duplicate-prevention/hysteresis logic in detail (the counting logic is the part most worth protecting against regressions).
+
 ## Configuration
 
 Everything tunable lives in `configs/config.yaml` — no hardcoded settings in source:
