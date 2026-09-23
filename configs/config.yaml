@@ -44,6 +44,8 @@ counting:
     point1: [0.0, 0.82]
     point2: [1.0, 0.82]
     margin_px: 15   # dead zone around the line to reject box jitter near the boundary
+    confirmation_frames: 3   # side-flip must repeat this many consecutive frames before counting -
+                              # filters single-frame detection variance (~100ms at 30fps, negligible delay)
   direction_labels: [IN, OUT]
 
 io:

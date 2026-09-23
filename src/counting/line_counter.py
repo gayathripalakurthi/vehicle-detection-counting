@@ -14,6 +14,8 @@ class CrossingEvent:
 class _TrackState:
     confirmed_side: int | None = None  # -1 or +1, only set once past the margin
     counted: bool = False
+    pending_side: int | None = None  # a candidate side-flip not yet confirmed for enough consecutive frames
+    pending_count: int = 0
 
 
 class LineCounter:
@@ -33,6 +35,15 @@ class LineCounter:
     against this, a side is only "confirmed" once the vehicle's anchor
     point is more than `margin_px` past the line; readings inside that
     dead zone are ignored rather than treated as a side change.
+
+    Even past the margin, a single anomalous frame (GPU inference isn't
+    perfectly deterministic run-to-run - a borderline-confidence vehicle's
+    box can shift a few pixels between otherwise-identical runs) can still
+    flip a reading once. `confirmation_frames` requires a candidate side
+    change to repeat for that many consecutive frames before it counts as
+    a real crossing, filtering exactly that single-frame flicker without
+    needing a bigger margin (which would just make the dead zone bigger,
+    not more time-robust).
     """
 
     def __init__(self, config: dict, frame_width: int, frame_height: int):
@@ -43,6 +54,7 @@ class LineCounter:
         self.p2 = (p2[0] * frame_width, p2[1] * frame_height)
         self.in_label, self.out_label = config["counting"]["direction_labels"]
         self.margin_px = line_cfg.get("margin_px", 15)
+        self.confirmation_frames = line_cfg.get("confirmation_frames", 1)
 
         (x1, y1), (x2, y2) = self.p1, self.p2
         self._line_length = math.hypot(x2 - x1, y2 - y1)
@@ -72,14 +84,34 @@ class LineCounter:
 
             side = 1 if distance > 0 else -1
 
-            if state.confirmed_side is not None and not state.counted and side != state.confirmed_side:
-                direction = self.in_label if side < 0 else self.out_label
-                state.counted = True
-                events.append(CrossingEvent(obj.track_id, obj.class_name, direction, frame_idx))
-                class_counts = self.counts.setdefault(obj.class_name, {self.in_label: 0, self.out_label: 0})
-                class_counts[direction] += 1
+            if state.confirmed_side is None:
+                # first-ever valid reading for this track - establish a baseline directly,
+                # nothing to confirm yet since there's no prior side to flip from
+                state.confirmed_side = side
+                continue
 
-            state.confirmed_side = side
+            if side == state.confirmed_side:
+                state.pending_side = None  # back on the known side - any flip in progress wasn't real
+                state.pending_count = 0
+                continue
+
+            # side != confirmed_side: a candidate flip
+            if state.pending_side == side:
+                state.pending_count += 1
+            else:
+                state.pending_side = side
+                state.pending_count = 1
+
+            if state.pending_count >= self.confirmation_frames:
+                if not state.counted:
+                    direction = self.in_label if side < 0 else self.out_label
+                    state.counted = True
+                    events.append(CrossingEvent(obj.track_id, obj.class_name, direction, frame_idx))
+                    class_counts = self.counts.setdefault(obj.class_name, {self.in_label: 0, self.out_label: 0})
+                    class_counts[direction] += 1
+                state.confirmed_side = side
+                state.pending_side = None
+                state.pending_count = 0
 
         return events
 

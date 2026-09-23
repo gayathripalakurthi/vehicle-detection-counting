@@ -79,3 +79,37 @@ def test_is_counted_reflects_track_state(sample_config):
 
     counter.update([make_obj(1, y_bottom=500)], 1)
     assert counter.is_counted(1) is True
+
+
+def test_confirmation_frames_ignores_a_single_frame_flip(sample_config):
+    # simulates exactly what we saw in practice: a borderline-confidence box flips side
+    # for one frame (e.g. GPU inference run-to-run variance) then reverts - with
+    # confirmation_frames=3 this must NOT count as a crossing
+    config = {**sample_config, "counting": {**sample_config["counting"],
+              "line": {**sample_config["counting"]["line"], "confirmation_frames": 3}}}
+    counter = LineCounter(config, frame_width=1000, frame_height=800)
+
+    counter.update([make_obj(1, y_bottom=300)], 0)  # establish above the line
+    events = counter.update([make_obj(1, y_bottom=500)], 1)  # one-frame flip below
+    assert events == []
+    events = counter.update([make_obj(1, y_bottom=300)], 2)  # reverts back above
+    assert events == []
+    assert counter.total() == 0
+    assert counter.is_counted(1) is False
+
+
+def test_confirmation_frames_counts_a_sustained_crossing(sample_config):
+    config = {**sample_config, "counting": {**sample_config["counting"],
+              "line": {**sample_config["counting"]["line"], "confirmation_frames": 3}}}
+    counter = LineCounter(config, frame_width=1000, frame_height=800)
+
+    counter.update([make_obj(1, y_bottom=300)], 0)  # above
+    assert counter.update([make_obj(1, y_bottom=500)], 1) == []  # below, 1/3
+    assert counter.update([make_obj(1, y_bottom=505)], 2) == []  # below, 2/3
+    events = counter.update([make_obj(1, y_bottom=510)], 3)  # below, 3/3 - confirmed
+    assert len(events) == 1
+    assert counter.total() == 1
+
+    # further frames on the same (now-confirmed) side must not double-count
+    assert counter.update([make_obj(1, y_bottom=520)], 4) == []
+    assert counter.total() == 1

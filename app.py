@@ -91,8 +91,8 @@ def process_video(video_path: str, config: dict, line_y: float, max_frames: int,
     frames_to_process = min(total_frames, max_frames) if max_frames else total_frames
 
     line_config = {**config, "counting": {
-        "line": {"point1": [0.0, line_y], "point2": [1.0, line_y], "margin_px": 15},
-        "direction_labels": ["IN", "OUT"],
+        **config["counting"],
+        "line": {**config["counting"]["line"], "point1": [0.0, line_y], "point2": [1.0, line_y]},
     }}
     counter = LineCounter(line_config, width, height)
 
