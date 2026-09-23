@@ -188,8 +188,13 @@ def ensure_weights(filename: str) -> Path:
     return weights_path
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False, max_entries=1)
 def load_tracker(model_label: str, confidence: float, iou: float) -> VehicleTracker:
+    # max_entries=1: on a memory-constrained deployment (Streamlit Community Cloud's
+    # free tier is ~1GB RAM), switching model/confidence/iou between runs would
+    # otherwise leave every previous PyTorch model resident in memory forever -
+    # st.cache_resource keeps entries indefinitely by default. Capping at 1 evicts
+    # the old one before loading the new one.
     base_config = load_config()
     model_info = MODEL_OPTIONS[model_label]
     weights_path = ensure_weights(model_info["filename"])
@@ -228,13 +233,29 @@ def transcode_for_browser(mp4v_path: str) -> str:
     return h264_path
 
 
+MAX_PROCESSING_DIMENSION = 1280  # cap the longer side of the frame before running anything
+
+
+def _scaled_dims(width: int, height: int, max_dim: int = MAX_PROCESSING_DIMENSION) -> tuple[int, int]:
+    scale = min(1.0, max_dim / max(width, height))
+    # round to even numbers - required for yuv420p (used by the H.264 transcode step)
+    new_w = max(2, int(width * scale) // 2 * 2)
+    new_h = max(2, int(height * scale) // 2 * 2)
+    return new_w, new_h
+
+
 def process_video(video_path: str, config: dict, line_y: float, max_frames: int, progress_bar) -> tuple[str, dict]:
     tracker, _ = load_tracker(st.session_state["model_label"], config["model"]["confidence"], config["model"]["iou"])
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width, height = _scaled_dims(orig_width, orig_height)
+    needs_resize = (width, height) != (orig_width, orig_height)
+    if needs_resize:
+        st.write(f"Downscaling {orig_width}×{orig_height} → {width}×{height} for processing "
+                 f"(keeps memory/CPU use reasonable, especially on CPU-only deployments)...")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frames_to_process = min(total_frames, max_frames) if max_frames else total_frames
 
@@ -255,6 +276,8 @@ def process_video(video_path: str, config: dict, line_y: float, max_frames: int,
         ok, frame = cap.read()
         if not ok:
             break
+        if needs_resize:
+            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
 
         t0 = time.perf_counter()
         tracked = tracker.track(frame)
