@@ -156,7 +156,17 @@ vehicle-detection-counting/
 
 ## Model weights
 
-Weight files are not committed to git (see `.gitignore`). Pretrained YOLO26 weights are downloaded automatically by Ultralytics on first run. The fine-tuned weights (`models/weights/yolo26n_visdrone_finetuned.pt`) are reproducible via `training/prepare_visdrone.py` then `training/train.py` (~2 hours on a 4GB GPU); publishing them as a GitHub Release for direct download is planned but not done yet.
+Weight files are not committed to git (see `.gitignore`) — download them from the [v1.0-weights release](https://github.com/gayathripalakurthi/vehicle-detection-counting/releases/tag/v1.0-weights) instead:
+
+```bash
+mkdir -p models/weights
+curl -L -o models/weights/yolo26n_visdrone_finetuned.pt \
+  https://github.com/gayathripalakurthi/vehicle-detection-counting/releases/download/v1.0-weights/yolo26n_visdrone_finetuned.pt
+curl -L -o models/weights/yolo26n.pt \
+  https://github.com/gayathripalakurthi/vehicle-detection-counting/releases/download/v1.0-weights/yolo26n.pt
+```
+
+(The plain pretrained `yolo26n.pt` is also downloaded automatically by Ultralytics on first run if you skip grabbing it here — but the fine-tuned one, which is the default in `configs/config.yaml`, only exists via the release or by reproducing it yourself with `training/prepare_visdrone.py` then `training/train.py`, ~2 hours on a 4GB GPU.)
 
 ## Limitations
 
