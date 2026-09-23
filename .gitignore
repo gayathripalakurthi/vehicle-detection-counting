@@ -39,6 +39,7 @@ outputs/plots/*
 .env
 .vscode/
 .idea/
+.claude/scheduled_tasks.lock  # session-runtime state, not project config
 
 # OS
 .DS_Store

@@ -1,6 +1,13 @@
-# PyTorch is installed separately with the CUDA-specific index (see README setup instructions):
+# For local GPU development, install PyTorch separately FIRST with the CUDA-specific
+# index (see README setup instructions):
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
-# Installing it via this file with the default index would pull the CPU-only build.
+# Then this file's unpinned torch/torchvision lines below are satisfied already and
+# left alone (pip only reinstalls on version conflicts, not just because a package is
+# listed). For CPU-only environments (e.g. Streamlit Community Cloud, no GPU available)
+# this file alone is enough - the --extra-index-url below supplies a CPU wheel.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
 
 ultralytics>=8.4.0
 lap>=0.5.12  # required by Ultralytics' ByteTrack/BoT-SORT for detection-to-track assignment
@@ -10,3 +17,5 @@ pyyaml>=6.0
 pandas>=2.2.0
 matplotlib>=3.9.0
 pytest>=8.0.0
+streamlit>=1.64.0
+requests>=2.31.0

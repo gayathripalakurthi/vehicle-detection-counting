@@ -63,6 +63,16 @@ python scripts/compare_models.py
 
 Outputs land in `outputs/videos/` (annotated video) and `outputs/results/` (JSON counts and evaluation reports) unless overridden with `--output`/`--results`.
 
+## Web frontend
+
+A Streamlit app (`app.py`) wraps the same pipeline for interactive use: upload a video, tune confidence/IoU/counting-line position and max frames from the sidebar, run it, then watch the annotated result and download the video + JSON results.
+
+```bash
+streamlit run app.py
+```
+
+Works both locally (uses your GPU automatically if available) and on CPU-only environments like Streamlit Community Cloud — `resolve_device("auto")` falls back to CPU with no code changes needed, just slower. Model weights aren't bundled with the app; it downloads whichever one you pick from the [v1.0-weights release](https://github.com/gayathripalakurthi/vehicle-detection-counting/releases/tag/v1.0-weights) the first time it's needed and caches it locally after that. `packages.txt` (ffmpeg) and `.streamlit/config.toml` (upload size limit) are there specifically for a Streamlit Cloud deployment to pick up automatically.
+
 ## Tests
 
 ```bash
