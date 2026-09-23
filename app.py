@@ -15,7 +15,9 @@ import tempfile
 import time
 from pathlib import Path
 
+import altair as alt
 import cv2
+import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -349,6 +351,48 @@ def render_class_chips(counts_by_class: dict):
     st.markdown(f'<div>{chips_html}</div>', unsafe_allow_html=True)
 
 
+def render_class_chart(counts_by_class: dict):
+    rows = [{"class": cls_name.capitalize(), "count": sum(d.values())} for cls_name, d in counts_by_class.items()]
+    df = pd.DataFrame(rows)
+    color_scale = alt.Scale(
+        domain=[r["class"] for r in rows],
+        range=[CLASS_COLORS.get(r["class"].lower(), "#64748b") for r in rows],
+    )
+    chart = (
+        alt.Chart(df)
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+        .encode(
+            x=alt.X("count:Q", title="Vehicles"),
+            y=alt.Y("class:N", sort="-x", title=None),
+            color=alt.Color("class:N", scale=color_scale, legend=None),
+            tooltip=[alt.Tooltip("class:N", title="Class"), alt.Tooltip("count:Q", title="Count")],
+        )
+        .properties(height=alt.Step(40))
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def render_how_it_works():
+    st.write("")
+    cols = st.columns(3)
+    steps = [
+        ("📹", "1. Upload footage", "Drop in a traffic video — dashcam, CCTV, or drone footage all work."),
+        ("🧠", "2. AI does the work", "YOLO26n detects vehicles, ByteTrack follows each one across frames."),
+        ("📊", "3. Get real counts", "Every vehicle is counted once, the moment it crosses your line — with direction."),
+    ]
+    for col, (icon, title, desc) in zip(cols, steps):
+        with col:
+            with st.container(border=True):
+                st.markdown(
+                    f"""<div style="text-align:center; padding: 0.5rem 0.25rem;">
+                        <div style="font-size:2.1rem;">{icon}</div>
+                        <div style="font-weight:700; margin-top:0.5rem; font-size:0.98rem;">{title}</div>
+                        <div style="color:#64748b; font-size:0.86rem; margin-top:0.35rem; line-height:1.4;">{desc}</div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+
 def render_sidebar():
     with st.sidebar:
         st.markdown("### ⚙️ Settings")
@@ -404,6 +448,8 @@ def render_results(results: dict, video_path: str):
         with st.container(border=True):
             st.markdown("**Per-class breakdown**")
             render_class_chips(results["counts_by_class"])
+            if results["counts_by_class"]:
+                render_class_chart(results["counts_by_class"])
 
         with st.expander("What's the difference between \"Total crossed\" and \"Unique tracked\"?"):
             st.caption(
@@ -431,6 +477,7 @@ def main():
 
     if uploaded is None:
         st.info("👆 Upload a video to get started, or try one of the sample clips in `data/raw/` if running locally.")
+        render_how_it_works()
         st.markdown(
             """<div class="app-footer">Vehicle Detection &amp; Counting System · YOLO26n fine-tuned on VisDrone2019-DET ·
             <a href="https://github.com/gayathripalakurthi/vehicle-detection-counting" target="_blank">View source on GitHub</a></div>""",
