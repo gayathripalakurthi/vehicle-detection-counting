@@ -101,6 +101,8 @@ def process_video(video_path: str, config: dict, line_y: float, max_frames: int,
 
     frame_idx = 0
     inference_times = []
+    unique_track_ids = set()
+    peak_in_frame = 0
     while frame_idx < frames_to_process:
         ok, frame = cap.read()
         if not ok:
@@ -111,12 +113,19 @@ def process_video(video_path: str, config: dict, line_y: float, max_frames: int,
         counter.update(tracked, frame_idx)
         inference_times.append(time.perf_counter() - t0)
 
+        unique_track_ids.update(obj.track_id for obj in tracked)
+        peak_in_frame = max(peak_in_frame, len(tracked))
+
         for obj in tracked:
             draw_tracked_object(frame, obj)
         draw_counting_line(frame, counter.p1, counter.p2)
         totals = counter.totals_by_direction()
-        hud_lines = [f"Frame {frame_idx}/{frames_to_process}", f"IN: {totals['IN']}   OUT: {totals['OUT']}",
-                     f"Total: {counter.total()}"]
+        hud_lines = [
+            f"Frame {frame_idx}/{frames_to_process}",
+            f"In frame: {len(tracked)}",  # currently-tracked vehicles this frame, NOT the same as Total below
+            f"IN: {totals['IN']}   OUT: {totals['OUT']}",
+            f"Total crossed: {counter.total()}",
+        ]
         draw_hud(frame, hud_lines)
         writer.write(frame)
 
@@ -134,6 +143,11 @@ def process_video(video_path: str, config: dict, line_y: float, max_frames: int,
         "counts_by_class": counter.counts,
         "totals_by_direction": counter.totals_by_direction(),
         "total_count": counter.total(),
+        # NOT the same as total_count: this is every distinct vehicle the tracker ever saw,
+        # whether or not it crossed the line - usually much bigger than total_count, and
+        # is what actually explains "I see way more cars than the count" (see UI caption).
+        "unique_vehicles_tracked": len(unique_track_ids),
+        "peak_vehicles_in_frame": peak_in_frame,
     }
     return out_path, results
 
@@ -186,11 +200,24 @@ def main():
                 st.download_button("Download annotated video", f, file_name="processed.mp4", mime="video/mp4")
 
         with col2:
-            st.metric("Total count", results["total_count"])
+            st.metric("Total crossed the line", results["total_count"])
             totals = results["totals_by_direction"]
             m1, m2 = st.columns(2)
             m1.metric("IN", totals["IN"])
             m2.metric("OUT", totals["OUT"])
+
+            st.divider()
+            m3, m4 = st.columns(2)
+            m3.metric("Unique vehicles tracked", results["unique_vehicles_tracked"])
+            m4.metric("Peak simultaneous in frame", results["peak_vehicles_in_frame"])
+            st.caption(
+                "**\"Total crossed\" vs. \"Unique vehicles tracked\":** a vehicle only counts toward "
+                "\"Total crossed\" once, the moment it passes the line - it doesn't count again for "
+                "every frame it's visible in. \"Unique vehicles tracked\" is every distinct vehicle the "
+                "model saw at all, whether or not it ever reached the line - if that number is much "
+                "bigger than the crossing total, most vehicles simply never crossed the line's position "
+                "in this clip (try moving the line slider, or check a longer clip)."
+            )
 
             st.subheader("Per-class counts")
             if results["counts_by_class"]:
